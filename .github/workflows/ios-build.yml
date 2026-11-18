@@ -1,5 +1,10 @@
-﻿# 杩欐槸缁欍€屾病鏈?Mac銆嶇敤鐨?GitHub Actions 宸ヤ綔娴併€?# 鐪熸鐢熸晥鐨勪綅缃繀椤绘槸浠撳簱鏍圭洰褰曠殑  .github/workflows/ios-build.yml
-# 鏈枃浠跺彧鏄柟渚垮鍒剁殑涓€浠藉壇鏈紙GitHub 缃戦〉缂栬緫鍣ㄩ渶瑕佹墜鍔ㄥ垱寤?.github/workflows/ 璺緞锛夈€?name: Build unsigned IPA
+# 给「没有 Mac」用的 GitHub Actions 工作流。
+# 真正生效的位置必须是仓库根目录的  .github/workflows/ios-build.yml
+# 本文件是同一份内容的副本（方便复制）。
+#
+# 注意：runs-on 用 macos-15-intel。2026-11 起 GitHub 的 arm64 macOS runner
+# 容量紧张，macos-15 / macos-latest 会长时间排队；Intel 标签通常更快被调度。
+name: Build unsigned IPA
 
 on:
   workflow_dispatch:
@@ -12,26 +17,29 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: 妫€鍑轰唬鐮?        uses: actions/checkout@v4
+      - name: 检出代码
+        uses: actions/checkout@v4
 
-      - name: 宸ュ叿閾句俊鎭?        run: |
+      - name: 工具链信息
+        run: |
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: 瀹氫綅宸ョ▼
+      - name: 定位工程
         id: locate
         run: |
           set -euo pipefail
           PROJ="$(find "$GITHUB_WORKSPACE" -maxdepth 6 -type d -name 'P4CANConsole.xcodeproj' | head -n 1)"
           if [ -z "$PROJ" ]; then
-            echo "::error::浠撳簱閲屾壘涓嶅埌 P4CANConsole.xcodeproj"
+            echo "::error::仓库里找不到 P4CANConsole.xcodeproj"
             exit 1
           fi
           echo "project=$PROJ" >> "$GITHUB_OUTPUT"
-          echo "浣跨敤宸ョ▼: $PROJ"
+          echo "使用工程: $PROJ"
           xcodebuild -project "$PROJ" -list
 
-      - name: 缂栬瘧锛堜笉绛惧悕锛?        run: |
+      - name: 编译（不签名）
+        run: |
           set -o pipefail
           xcodebuild \
             -project "${{ steps.locate.outputs.project }}" \
@@ -46,13 +54,13 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
 
-      - name: 鎵撳寘鏈鍚?IPA
+      - name: 打包未签名 IPA
         run: |
           set -euo pipefail
           PRODUCTS="$RUNNER_TEMP/build/Build/Products/Release-iphoneos"
           APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' | head -n 1)"
           if [ -z "$APP" ]; then
-            echo "::error::缂栬瘧浜х墿閲屾病鏈?.app"
+            echo "::error::编译产物里没有 .app"
             exit 1
           fi
           echo "APP=$APP"
@@ -62,19 +70,20 @@ jobs:
           cd "$RUNNER_TEMP"
           zip -qry "$GITHUB_WORKSPACE/P4CANConsole-unsigned.ipa" Payload
 
-          echo "--- 浜х墿淇℃伅 ---"
+          echo "--- 产物信息 ---"
           ls -lh "$GITHUB_WORKSPACE/P4CANConsole-unsigned.ipa"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" || true
           /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
 
-      - name: 涓婁紶浜х墿
+      - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
           name: P4CANConsole-unsigned-ipa
           path: P4CANConsole-unsigned.ipa
           if-no-files-found: error
 
-      - name: 澶辫触鏃朵繚鐣欐棩蹇?        if: failure()
+      - name: 失败时保留日志
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: xcodebuild-log
