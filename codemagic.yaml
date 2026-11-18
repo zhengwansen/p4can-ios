@@ -50,10 +50,15 @@ workflows:
           set -e
           APP_PATH="build/Build/Products/Release-iphoneos/$XCODE_TARGET.app"
           if [ ! -d "$APP_PATH" ]; then
-            echo "找不到 $APP_PATH"
-            ls -R build/Build/Products || true
-            exit 1
+            FOUND="$(find build -maxdepth 6 -name "$XCODE_TARGET.app" -type d | head -n 1)"
+            if [ -z "$FOUND" ]; then
+              echo "找不到 $XCODE_TARGET.app"
+              ls -R build/Build/Products || true
+              exit 1
+            fi
+            APP_PATH="$FOUND"
           fi
+          echo "APP_PATH=$APP_PATH"
           mkdir -p Payload
           cp -R "$APP_PATH" Payload/
           zip -qry P4CANConsole-unsigned.ipa Payload

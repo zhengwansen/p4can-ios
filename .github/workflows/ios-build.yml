@@ -58,9 +58,15 @@ jobs:
         run: |
           set -euo pipefail
           PRODUCTS="$RUNNER_TEMP/build/Build/Products/Release-iphoneos"
-          APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' | head -n 1)"
+          APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' 2>/dev/null | head -n 1)"
+          if [ -z "$APP" ]; then
+            # 不同 Xcode 版本的产物目录可能不同，兜底全树搜索
+            echo "在 $PRODUCTS 未找到，改为全树搜索"
+            APP="$(find "$RUNNER_TEMP/build" -maxdepth 6 -name '*.app' 2>/dev/null | head -n 1)"
+          fi
           if [ -z "$APP" ]; then
             echo "::error::编译产物里没有 .app"
+            find "$RUNNER_TEMP/build" -maxdepth 5 -name '*.app' -o -maxdepth 5 -type d -name Products
             exit 1
           fi
           echo "APP=$APP"
