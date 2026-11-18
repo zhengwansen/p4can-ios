@@ -119,6 +119,22 @@ GitHub 网页拖拽**不会**上传以点开头的隐藏目录，所以手动建
 
 ---
 
+## 备用方案：GitHub 不分配 macOS runner 时
+
+新注册的 GitHub 账号经常拿不到 macOS runner。本项目实测：同一个仓库里 **Ubuntu 探针 10 秒跑完**，而 `macos-13`、`macos-14`、`macos-15`、`macos-15-intel` 四个标签**全部无限排队、没有 runner 认领**，GitHub 状态页也没有故障。这不是 YAML 问题，是账号拿不到 macOS 资源。
+
+这时改用 **Codemagic**（不挑账号年龄，免费额度 500 分钟/月 macOS）：
+
+1. 打开 <https://codemagic.io/start/>，用 GitHub 登录并授权本仓库（公开仓库不需要额外权限）
+2. Codemagic 会自动读取仓库根目录的 `codemagic.yaml`
+3. 选择 **P4-CAN iOS unsigned IPA** → **Start new build**
+4. 3–5 分钟后，在该次构建页面的 **Artifacts** 里下载 `P4CANConsole-unsigned.ipa`
+5. 拿到 ipa 后，回到上面的「第 4 步：Sideloadly 签名安装」照做
+
+`codemagic.yaml` 里做的就是同一套命令：`xcodebuild -target P4CANConsole -sdk iphoneos CODE_SIGNING_ALLOWED=NO`，再把 `.app` 打成 `Payload/` 的 ipa，所以产物和 GitHub Actions 那条路完全一致。
+
+---
+
 ## 如果以后能借到 Mac
 
 那就不用折腾了：解压 → 双击 `P4CANConsole.xcodeproj` → 选 Team → ⌘R，两分钟装完，且不用 7 天重签（免费账号仍是 7 天，付费账号 1 年）。

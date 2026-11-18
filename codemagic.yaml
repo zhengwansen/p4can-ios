@@ -1,0 +1,63 @@
+# Codemagic 构建配置（备用方案：GitHub 的 macOS runner 对本账号不分配时使用）
+#
+# 用法：
+#   1. 打开 https://codemagic.io/start/ ，用 GitHub 账号登录并授权本仓库
+#   2. Codemagic 会自动读取本文件，选 "P4-CAN iOS unsigned IPA" → Start new build
+#   3. 构建完成后在该次构建的 Artifacts 里下载 P4CANConsole-unsigned.ipa
+#
+# 免费额度：每月 500 分钟 macOS（mac_mini_m2），一次构建约 3-5 分钟。
+
+workflows:
+  ios-unsigned:
+    name: P4-CAN iOS unsigned IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+      vars:
+        XCODE_PROJECT: "P4CANConsole.xcodeproj"
+        XCODE_TARGET: "P4CANConsole"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: master
+          include: true
+    scripts:
+      - name: 显示工具链
+        script: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: 编译（不签名）
+        script: |
+          set -e
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -target "$XCODE_TARGET" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+      - name: 打包未签名 IPA
+        script: |
+          set -e
+          APP_PATH="build/Build/Products/Release-iphoneos/$XCODE_TARGET.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "找不到 $APP_PATH"
+            ls -R build/Build/Products || true
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry P4CANConsole-unsigned.ipa Payload
+          ls -lh P4CANConsole-unsigned.ipa
+    artifacts:
+      - P4CANConsole-unsigned.ipa
+      - build/Build/Products/Release-iphoneos/*.app
