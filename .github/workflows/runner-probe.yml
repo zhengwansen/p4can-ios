@@ -1,14 +1,19 @@
-name: Runner probe
+name: Mac runner probe
 
 on:
   workflow_dispatch:
 
 jobs:
   probe:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
-      - name: Echo
+      - name: Report
         run: |
-          echo "ubuntu runner ok"
-          uname -a
-          date -u
+          sw_vers
+          uname -m
+          xcodebuild -version
