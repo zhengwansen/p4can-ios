@@ -1,0 +1,88 @@
+# 这是给「没有 Mac」用的 GitHub Actions 工作流。
+# 真正生效的位置必须是仓库根目录的  .github/workflows/ios-build.yml
+# 本文件只是方便复制的一份副本（GitHub 网页编辑器需要手动创建 .github/workflows/ 路径）。
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 工具链信息
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: 定位工程
+        id: locate
+        run: |
+          set -euo pipefail
+          PROJ="$(find "$GITHUB_WORKSPACE" -maxdepth 6 -type d -name 'P4CANConsole.xcodeproj' | head -n 1)"
+          if [ -z "$PROJ" ]; then
+            echo "::error::仓库里找不到 P4CANConsole.xcodeproj"
+            exit 1
+          fi
+          echo "project=$PROJ" >> "$GITHUB_OUTPUT"
+          echo "使用工程: $PROJ"
+          xcodebuild -project "$PROJ" -list
+
+      - name: 编译（不签名）
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "${{ steps.locate.outputs.project }}" \
+            -target P4CANConsole \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
+
+      - name: 打包未签名 IPA
+        run: |
+          set -euo pipefail
+          PRODUCTS="$RUNNER_TEMP/build/Build/Products/Release-iphoneos"
+          APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' | head -n 1)"
+          if [ -z "$APP" ]; then
+            echo "::error::编译产物里没有 .app"
+            exit 1
+          fi
+          echo "APP=$APP"
+
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/Payload/"
+          cd "$RUNNER_TEMP"
+          zip -qry "$GITHUB_WORKSPACE/P4CANConsole-unsigned.ipa" Payload
+
+          echo "--- 产物信息 ---"
+          ls -lh "$GITHUB_WORKSPACE/P4CANConsole-unsigned.ipa"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist" || true
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Info.plist" || true
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: P4CANConsole-unsigned-ipa
+          path: P4CANConsole-unsigned.ipa
+          if-no-files-found: error
+
+      - name: 失败时保留日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: ${{ runner.temp }}/xcodebuild.log
+          if-no-files-found: ignore
