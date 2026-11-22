@@ -2,8 +2,11 @@
 # 真正生效的位置必须是仓库根目录的  .github/workflows/ios-build.yml
 # 本文件是同一份内容的副本（方便复制）。
 #
-# 注意：runs-on 用 macos-15-intel。2026-11 起 GitHub 的 arm64 macOS runner
-# 容量紧张，macos-15 / macos-latest 会长时间排队；Intel 标签通常更快被调度。
+# 两个踩过的坑：
+#  1. runs-on 用 macos-15-intel。2026-11 起 GitHub 的 arm64 macOS runner 容量紧张，
+#     macos-15 / macos-latest 会排很久；Intel 标签通常更快。
+#  2. 不能用 -derivedDataPath 搭配 -target（xcodebuild 会报错要求 -scheme），
+#     改用 CONFIGURATION_BUILD_DIR 指定产物目录。
 name: Build unsigned IPA
 
 on:
@@ -46,27 +49,24 @@ jobs:
             -target P4CANConsole \
             -configuration Release \
             -sdk iphoneos \
-            -derivedDataPath "$RUNNER_TEMP/build" \
+            CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/out" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
-            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 200
+            build 2>&1 | tee "$RUNNER_TEMP/xcodebuild.log" | tail -n 300
 
       - name: 打包未签名 IPA
         run: |
           set -euo pipefail
-          PRODUCTS="$RUNNER_TEMP/build/Build/Products/Release-iphoneos"
-          APP="$(find "$PRODUCTS" -maxdepth 1 -name '*.app' 2>/dev/null | head -n 1)"
+          APP="$(find "$RUNNER_TEMP/out" -maxdepth 1 -name '*.app' 2>/dev/null | head -n 1)"
           if [ -z "$APP" ]; then
-            # 不同 Xcode 版本的产物目录可能不同，兜底全树搜索
-            echo "在 $PRODUCTS 未找到，改为全树搜索"
-            APP="$(find "$RUNNER_TEMP/build" -maxdepth 6 -name '*.app' 2>/dev/null | head -n 1)"
+            APP="$(find "$RUNNER_TEMP" -maxdepth 6 -name '*.app' 2>/dev/null | head -n 1)"
           fi
           if [ -z "$APP" ]; then
             echo "::error::编译产物里没有 .app"
-            find "$RUNNER_TEMP/build" -maxdepth 5 -name '*.app' -o -maxdepth 5 -type d -name Products
+            find "$RUNNER_TEMP" -maxdepth 3 -type d | head -n 40
             exit 1
           fi
           echo "APP=$APP"
